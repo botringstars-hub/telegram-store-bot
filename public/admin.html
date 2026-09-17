@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ringstars Admin</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,sans-serif;color:#eaf0fa;background:#09111f}
+    *{box-sizing:border-box}body{margin:0}main{max-width:920px;margin:auto;padding:18px}
+    .top{display:flex;justify-content:space-between;align-items:center}.card{background:#141f32;border:1px solid #293a58;border-radius:16px;padding:18px;margin:15px 0}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}
+    .metric{background:#192842;border-radius:14px;padding:15px}.metric b{display:block;font-size:28px;margin-top:8px}
+    form{display:grid;gap:10px}input,select,textarea,button{font:inherit;color:inherit;background:#0d1829;border:1px solid #344968;border-radius:10px;padding:12px}
+    textarea{min-height:110px}button{background:#2f80ed;border:0;font-weight:700}.muted{color:#9fb0c8}.hide{display:none}
+    table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid #2b3a52}.scroll{overflow:auto}
+  </style>
+</head>
+<body>
+<main>
+  <section id="loginBox" class="card" style="max-width:430px;margin:15vh auto">
+    <h1>Login Admin</h1>
+    <form id="loginForm">
+      <input name="username" placeholder="Username" required>
+      <input name="password" type="password" placeholder="Password" required>
+      <button>Masuk</button>
+      <span id="loginMsg" class="muted"></span>
+    </form>
+  </section>
+
+  <div id="dashboard" class="hide">
+    <div class="top"><h1>Ringstars Admin</h1><button id="logout">Keluar</button></div>
+    <section id="summary" class="grid"></section>
+
+    <section class="card">
+      <h2>Tambah atau ubah produk</h2>
+      <form id="productForm">
+        <input name="id" placeholder="ID produk (kosong = otomatis)">
+        <input name="name" placeholder="Nama produk" required>
+        <input name="description" placeholder="Deskripsi">
+        <input name="price" type="number" min="0" placeholder="Harga" required>
+        <button>Simpan produk</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Tambah stok</h2>
+      <form id="stockForm">
+        <select name="id" id="stockProduct"></select>
+        <textarea name="items" placeholder="Satu akun atau kode per baris" required></textarea>
+        <button>Tambahkan stok</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Kode promo</h2>
+      <form id="promoForm">
+        <input name="code" placeholder="Kode promo" required>
+        <input name="percent" type="number" min="0" max="100" placeholder="Diskon persen" required>
+        <button>Simpan promo</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Komisi reseller</h2>
+      <form id="settingsForm">
+        <input name="resellerPercent" type="number" min="0" max="100" placeholder="Komisi persen" required>
+        <button>Simpan pengaturan</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Pesanan terbaru</h2>
+      <div class="scroll">
+        <table><thead><tr><th>ID</th><th>Produk</th><th>Total</th><th>Status</th></tr></thead>
+        <tbody id="orders"></tbody></table>
+      </div>
+    </section>
+  </div>
+</main>
+<script>
+const q=s=>document.querySelector(s);
+const money=n=>new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(n);
+async function api(url,options={}){
+  const response=await fetch(url,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(data.error||"Permintaan gagal");
+  return data;
+}
+async function load(){
+  try{
+    const s=await api("/api/admin/state");
+    q("#loginBox").classList.add("hide");q("#dashboard").classList.remove("hide");
+    q("#summary").innerHTML=[
+      ["Produk",s.products.length],
+      ["Total stok",s.products.reduce((a,p)=>a+p.stock.length,0)],
+      ["Pesanan",s.orders.length],
+      ["Lunas",s.orders.filter(o=>o.status==="paid").length]
+    ].map(x=>'<div class="metric">'+x[0]+'<b>'+x[1]+'</b></div>').join("");
+    q("#stockProduct").innerHTML=s.products.map(p=>'<option value="'+p.id+'">'+p.name+' ('+p.stock.length+')</option>').join("");
+    q("#orders").innerHTML=s.orders.map(o=>'<tr><td>'+o.id+'</td><td>'+o.productName+'</td><td>'+money(o.total)+'</td><td>'+o.status+'</td></tr>').join("");
+    q("#settingsForm [name=resellerPercent]").value=s.settings.resellerPercent;
+  }catch{q("#loginBox").classList.remove("hide");q("#dashboard").classList.add("hide")}
+}
+q("#loginForm").onsubmit=async e=>{
+  e.preventDefault();
+  try{
+    await api("/api/login",{method:"POST",body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});
+    q("#loginMsg").textContent="";load();
+  }catch(error){q("#loginMsg").textContent=error.message}
+};
+for(const [selector,url] of [["#productForm","/api/admin/products"],["#promoForm","/api/admin/promos"],["#settingsForm","/api/admin/settings"]]){
+  q(selector).onsubmit=async e=>{
+    e.preventDefault();
+    try{await api(url,{method:"POST",body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});if(selector!=="#settingsForm")e.target.reset();load()}catch(error){alert(error.message)}
+  };
+}
+q("#stockForm").onsubmit=async e=>{
+  e.preventDefault();const data=Object.fromEntries(new FormData(e.target));
+  try{await api("/api/admin/stock/"+encodeURIComponent(data.id),{method:"POST",body:JSON.stringify({items:data.items})});e.target.reset();load()}catch(error){alert(error.message)}
+};
+q("#logout").onclick=async()=>{await api("/api/logout",{method:"POST"});location.reload()};
+load();
+</script>
+</body>
+</html>
