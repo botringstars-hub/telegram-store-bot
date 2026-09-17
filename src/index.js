@@ -186,6 +186,9 @@ if (bot) {
     );
   });
   bot.command("katalog", showCatalog);
+  bot.command("id", async ctx => {
+    await ctx.reply("ID Telegram Anda: <code>" + String(ctx.from.id) + "</code>", { parse_mode: "HTML" });
+  });
   bot.action("catalog", async ctx => {
     await ctx.answerCbQuery();
     await showCatalog(ctx);
